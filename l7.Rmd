@@ -15,7 +15,12 @@ fontsize: 12pt
 ---
 
 # Exercise 1:
-Let weib.y be an i.i.d. sample from a gamma r.v. with density
+Let weib.y be an i.i.d. sample from a gamma r.v.
+```{r echo=FALSE}
+weib.y = c(225, 171, 198, 189, 189, 135, 162, 135, 117, 162)
+```
+
+with density
 $$\frac{1}{\Gamma(\theta)}3^\theta y^{\theta-1}e^{-3y}\quad y,\theta>0$$
 
 1. Find the m.l.e. of $\theta$ solving the likelihood equation and also maximizing directly the log likelihood.
