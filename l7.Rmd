@@ -1,16 +1,18 @@
 ---
-title: 'TMI - Homework L7'
-author: 
-  - Alfonzetti Giuseppe,
-  - Castiglione Cristian, 
-  - Iadevito Alessandro,
-  - Pozza Francesco
-header-includes:
-   - \usepackage{amsmath}
+title: "TMI - Homework L7"
+author:
+- Alfonzetti Giuseppe,
+- Castiglione Cristian,
+- Iadevito Alessandro,
+- Pozza Francesco
+header-includes: \usepackage{amsmath}
 output:
+  html_document:
+    df_print: paged
+    toc: no
   pdf_document:
-    toc: false
-    number_sections: false
+    number_sections: no
+    toc: no
 fontsize: 12pt
 ---
 
@@ -30,8 +32,21 @@ $$\frac{1}{\Gamma(\theta)}3^\theta y^{\theta-1}e^{-3y}\quad y,\theta>0$$
 simulation-based solutions.
 
 ## Solution :
-
+We have $Y\sim Ga(\theta,3)$, then
+\begin{eqnarray*}
+  \mathcal{L}(\theta;y) &\propto& \frac{1}{\Gamma(\theta)^n}3^{n\theta}\prod_{i=1}^ny_i^{\theta-1}\\
+  \mathcal{l}(\theta;y) &=& -n\log\Gamma(\theta) + n\theta\log 3 + (\theta-1)\sum_{i=1}^{n}\log y_i \\
+  &=& -n\log\Gamma(\theta) + n\theta\log 3 + (\theta-1)t_1\\
+  \textit{with}\; t_1&=& \sum_{i=1}^{n}\log y_i
+\end{eqnarray*}
+Therefore 
+\begin{eqnarray*}
+  \mathcal{l}_*(\theta;y) &=& -n\psi(\theta) + n\log 3 + t_1 = 0\\
+  \mathcal{l}_{(2)}(\theta;y) &=& n\frac{\Gamma'(\theta)-\Gamma''(\theta)\Gamma(\theta)}{\Gamma(\theta)^2}
+\end{eqnarray*}
 \newpage 
+
+
 # Exercise 2:
 Consider the following data
 ```{r}
