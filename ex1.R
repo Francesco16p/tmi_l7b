@@ -34,9 +34,9 @@ mle_score$jac
 mle_llik = optim(400, fn = nllik, method = 'L-BFGS-B', 
                  lower = 0, upper = 1000, hessian = T, data = weib.y)
 
-thhat = mle_llik$par
-llik_thhat = -mle_llik$value
-j_thhat = mle_llik$hessian
+thhat = mle_llik$par #mle
+llik_thhat = -mle_llik$value #maximum loglikelihood
+j_thhat = mle_llik$hessian #observed info in the maximum
 
 #### plot the relative log-likelihood for theta ####
 #base plot
@@ -57,11 +57,12 @@ th_wald_ci = c(
 
 #### deviance confidence interval theta ####
 th_dev_ci = c(
+  #left solution
   uniroot(function(x) -nllik(x, data = weib.y) - llik_thhat + qchisq(conf,1)/2, 
           c(480, thhat))$root,
+  #right solution
   uniroot(function(x) -nllik(x, data = weib.y) - llik_thhat + qchisq(conf,1)/2, 
           c(thhat, 520))$root
-  
 )
 
 #### results for theta parameterization ####
@@ -100,11 +101,11 @@ nllik_w = function(w, data){
 }
 
 #equivariance properties
-what = w_of(thhat) 
-llik_what = llik_thhat
+what = w_of(thhat) #equivariance
+llik_what = -nllik_w(what, data = weib.y)#equivariance
 #compute numerically the observed information
 j_what = optimHess(what, nllik_w, data = weib.y)
-
+optimHess(th_of(what), nllik, data = weib.y) #equal to j_thhat
 
 #### relative log-likelihood w ####
 tibble(w = seq(5,7,0.001)) %>%
@@ -124,11 +125,11 @@ w_wald_ci = c(
   what + qnorm(1 - (1 - conf)/2) *1/sqrt(j_what)
 ) %>% print()
 
-#### deviance confidence interval theta ####
+#### deviance confidence interval omega ####
 w_dev_ci = c(
-  uniroot(function(x) -nllik(th = exp(x), data = weib.y) - llik_what + qchisq(conf,1)/2, 
+  uniroot(function(x) -nllik_w(x, data = weib.y) - llik_what + qchisq(conf,1)/2, 
           c(6.175, what))$root,
-  uniroot(function(x) -nllik(th = exp(x), data = weib.y) - llik_what + qchisq(conf,1)/2, 
+  uniroot(function(x) -nllik_w(x, data = weib.y) - llik_what + qchisq(conf,1)/2, 
           c(what, 6.25))$root
   
 ) %>% print()
