@@ -65,6 +65,370 @@ and standard deviation $10$.
 
 
 
+```{r}
+rm(list=ls())
+
+# Data preparation
+y_A = c(59, 172, 4762, 1000, 2885, 1905, 7094, 6259, 1950, 1208,
+        882, 22793, 30002, 55, 32591, 853, 2153, 738, 311)
+y_B = c(36539, 3556, 1194, 1010, 5000, 1370, 1494, 55945,
+        19772, 31992, 1640, 1985, 2977, 1304, 1176, 1385)
+
+n_A = length(y_A)
+n_B = length(y_B)
+
+x_A = rep(0, n_A)
+x_B = rep(1, n_B)
+
+y = c(y_A, y_B)
+x = c(x_A, x_B)
+
+X = cbind(rep(1, n_A+n_B), x)
+```
+
+1. 
+
+```{r}
+# Negative Log-Likelihood
+nLogL = function(Beta, Y, X){
+  Mu = X %*% Beta
+  Lambda = 1./exp(Mu)
+  return(sum(-dexp(Y, Lambda, log=TRUE)))
+}
+```
+
+2.
+
+```{r}
+# Likelihood Maximization
+MLE_Opt = optim(c(0.,0.), nLogL, method='L-BFGS-B', hessian=TRUE, Y=y, X=X)
+
+# Point and variance Estimates
+MLE = MLE_Opt$par
+Var = solve(MLE_Opt$hessian)
+StdErr = sqrt(diag(Var))
+
+cat('MLE :', MLE,
+    '\nS.E.:', StdErr,
+    '\nCov.:', Var[1,2]/sum(StdErr))
+```
+
+```{r}
+# Parameter Grid
+Beta0_Lo = MLE[1]-4*sqrt(Var[1,1])
+Beta0_Up = MLE[1]+4*sqrt(Var[1,1])
+Beta1_Lo = MLE[2]-4*sqrt(Var[2,2])
+Beta1_Up = MLE[2]+4*sqrt(Var[2,2])
+
+vBeta0 = seq(Beta0_Lo, Beta0_Up, l=50)
+vBeta1 = seq(Beta1_Lo, Beta1_Up, l=50)
+mBeta  = expand.grid(vBeta0, vBeta1)
+
+vLogL = -apply(mBeta, 1, function(x) nLogL(x, Y=y, X=X)) + MLE_Opt$value
+mLogL = matrix(vLogL, nrow=50, ncol=50)
+vExpL = exp(vLogL)
+mExpL = exp(mLogL)
+
+# Quantile Levels
+QLevels = c(0.99,0.95,0.90,0.75,0.50)
+QValues = qchisq(QLevels, 2)
+```
+
+```{r}
+dat = data.frame(cbind(mBeta, vLogL, vExpL))
+colnames(dat) = c('Beta_0', 'Beta_1', 'LogL', 'ExpL')
+
+p1 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=LogL, fill=LogL)) +
+  geom_raster(interpolate=TRUE) +
+  geom_contour(color='white', breaks=-.5*QValues) +
+  geom_point(aes(x=MLE[1], y=MLE[2]), color='white') +
+  scale_fill_distiller(palette="Spectral") +
+  labs(fill=expression(l(beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) + 
+  ggtitle("Relative Log-Likelihood Function") +
+  theme(legend.position="bottom") 
+
+p2 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=ExpL, fill=ExpL)) +
+  geom_raster(interpolate=TRUE) +
+  geom_contour(color='white', breaks=exp(-.5*QValues)) +
+  geom_point(aes(x=MLE[1], y=MLE[2]), color='white') +
+  scale_fill_distiller(palette="Spectral") +
+  labs(fill=expression(L(beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) +
+  ggtitle("Relative Likelihood Function") +
+  theme(legend.position="bottom")
+
+grid.arrange(p1, p2, nrow=1)
+```
+
+2.
+
+```{r}
+# Negative Profile Log-Likelihood
+nPLogL = function(Beta1, Y, X, par=FALSE){
+  Opt = optim(0., function(x) nLogL(c(x,Beta1), Y=Y, X=X), 
+              method='L-BFGS-B', hessian=TRUE)
+  if(par){
+    return(Opt$par)
+  }else{
+    return(Opt$value)
+  }
+}
+
+vNPLogL = sapply(vBeta1, function(x) nPLogL(x, Y=y, X=X, par=FALSE))
+vPBeta0 = sapply(vBeta1, function(x) nPLogL(x, Y=y, X=X, par=TRUE ))
+
+```
+
+```{r}
+# Relative Profile Log-Likelihood
+dat = data.frame(x=vBeta1, y=-vNPLogL+min(vNPLogL))
+p1 = ggplot(data=dat, mapping=aes(x=x, y=y, color=y)) + 
+  geom_line(color='steelblue') + 
+  geom_hline(yintercept=-.5*c(0,qchisq(.95,1)), color='darkgray') +
+  xlab(expression(beta[1])) +
+  ylab(expression(l[P](beta))) + 
+  ggtitle('Relative Profile Likelihood') +
+  theme(legend.position="bottom")
+
+# Relative log-Likelihood
+dat = data.frame(cbind(mBeta,vLogL))
+colnames(dat) = c('Beta_0', 'Beta_1', 'Density')
+p2 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=Density, fill=Density)) +
+  geom_raster(interpolate=TRUE) +
+  geom_contour(color='white', breaks=-.5*QValues) +
+  geom_line(aes(x=rep(vPBeta0,50), y=rep(vBeta1,50)), linetype='dashed') +
+  geom_point(aes(x=MLE[1], y=MLE[2]), color="white") +
+  scale_fill_distiller(palette="Spectral") +
+  labs(fill=expression(l(beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) +
+  ggtitle("Relative Likelihood Function") +
+  theme(legend.position="bottom")
+
+grid.arrange(p1, p2, nrow=1)
+```
+
+4.
+
+```{r, warning=FALSE, results=FALSE}
+# Profile Maximum Likelihood
+PMLE_Opt = optim(.5, function(u) nPLogL(u, Y=y, X=X, par=FALSE), hessian=TRUE)
+```
+
+```{r}
+# Relative Profile Log-Likelihood
+dat = data.frame(x=vBeta1, y=-vNPLogL+min(vNPLogL))
+p1 = ggplot(data=dat, mapping=aes(x=x, y=y, color=y)) + 
+  geom_line(color='steelblue') + 
+  xlab(expression(beta[1])) +
+  ylab(expression(l[P](beta))) + 
+  ggtitle('Relative Profile Log-Likelihood') +
+  geom_vline(xintercept=PMLE_Opt$par, color='red', linetype='dashed') +
+  geom_hline(yintercept=-.5*c(0,qchisq(.95,1)), color='darkgray', linetype='solid')
+
+# Relative Log-Likelihood
+dat = data.frame(cbind(mBeta,vLogL))
+colnames(dat) = c('Beta_0', 'Beta_1', 'Density')
+p2 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=Density, fill=Density)) +
+  geom_raster(interpolate=TRUE) +
+  geom_contour(color='white', breaks=-.5*QValues) +
+  geom_line(aes(x=rep(vPBeta0,50), y=rep(vBeta1,50)), linetype='dashed') +
+  geom_point(aes(x=MLE[1], y=MLE[2]), color="white") +
+  scale_fill_distiller(palette="Spectral") +
+  labs(fill=expression(l(beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) +
+  ggtitle("Relative Log-Likelihood Function") +
+  theme(legend.position="bottom")
+
+grid.arrange(p1, p2, nrow=1)
+```
+
+```{r}
+# Objective Function
+Fun = function(u){
+  PLogL = - nPLogL(u, Y=y, X=X, par=FALSE)
+  PLogL = PLogL + PMLE_Opt$value
+  PLogL = PLogL + .5*qchisq(.95,1)
+  return(PLogL)
+}
+
+Fun = Vectorize(Fun, 'u')
+
+# Confidence intervals
+CI_Wald = PMLE_Opt$par + c(-1,+1)*qnorm(.975)/sqrt(PMLE_Opt$hessian[1,1])
+CI_Dev  = uniroot.all(Fun, interval=c(Beta1_Lo,Beta0_Up))
+
+# Output
+cat('Wald C.I.    :', CI_Wald,
+    '\nDeviance C.I.:', CI_Dev)
+```
+
+5.
+
+```{r}
+W_Dev  = - 2*(PMLE_Opt$value - nPLogL(0, Y=y, X=X, par=FALSE))
+W_Wald = PMLE_Opt$par^2 * PMLE_Opt$hessian[1,1]
+pvalue_Dev  = 1-pchisq(W_Dev , 1)
+pvalue_Wald = 1-pchisq(W_Wald, 1)
+
+cat('Wald p-value    :', pvalue_Wald,
+    '\nDeviance p-value:', pvalue_Dev)
+
+```
+
+```{r}
+# Negative Log-Likelihood
+nLogL = function(Beta, Y, X){
+  Mu = X %*% Beta
+  Lambda = 1./exp(Mu)
+  return(sum(-dexp(Y, Lambda, log=TRUE)))
+}
+
+# Negative Log-Prior
+nLogPrior = function(Beta, HPar){
+  Mu    = HPar[1:2]
+  Sigma = HPar[3:4]
+  return(sum(-dnorm(Beta, Mu, sqrt(Sigma), log=TRUE)))
+}
+
+# Negative Log-Posterior
+nLogPost = function(Beta, HPar, Y, X){
+  return(nLogPrior(Beta, HPar)+nLogL(Beta, Y, X))
+}
+
+# Hyperparameters
+h = c(0.,0.,100.,100.)
+
+# Likelihood Maximization
+MAP_Opt = optim(c(0.,0.), nLogPost, method='L-BFGS-B', hessian=TRUE, HPar=h, Y=y, X=X)
+
+# Point and variance Estimates
+MAP_Post = MAP_Opt$par
+Var_Post = solve(MAP_Opt$hessian)
+SE_Post  = sqrt(diag(Var_Post))
+
+# Output
+cat('Posterior Maximum :', MAP_Post,
+    '\nPosterior S.E.    :', sqrt(diag(Var_Post)),
+    '\nPosterior Cor.    :', Var_Post[1,2]/sum(sqrt(diag(Var_Post))))
+```
+
+```{r}
+# Parameter Grid
+Beta0_Lo = MAP_Post[1]-4*SE_Post[1]
+Beta0_Up = MAP_Post[1]+4*SE_Post[1]
+Beta1_Lo = MAP_Post[2]-4*SE_Post[2]
+Beta1_Up = MAP_Post[2]+4*SE_Post[2]
+
+vBeta0 = seq(Beta0_Lo, Beta0_Up, l=50)
+vBeta1 = seq(Beta1_Lo, Beta1_Up, l=50)
+mBeta  = expand.grid(vBeta0, vBeta1)
+
+vLogPost = apply(mBeta, 1, function(x) -nLogPost(x, HPar=h, Y=y, X=X) + MAP_Opt$value)
+mLogPost = matrix(vLogPost, nrow=50, ncol=50)
+vExpPost = exp(vLogPost)
+mExpPost = exp(mLogPost)
+
+# Quantile Levels
+QLevels = c(0.99,0.95,0.90,0.75,0.50)
+QValues = qchisq(QLevels, 2)
+```
+
+```{r}
+dat = data.frame(cbind(mBeta, vLogPost, vExpPost))
+colnames(dat) = c('Beta_0', 'Beta_1', 'LogP', 'ExpP')
+
+p1 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=LogP, fill=LogP)) +
+  geom_raster(interpolate=TRUE) +
+  geom_contour(color='white', breaks=-.5*QValues) +
+  geom_point(aes(x=MAP_Post[1], y=MAP_Post[2]), color='white') +
+  scale_fill_distiller(palette="Spectral") +
+  labs(fill=expression(paste('Log ', pi(beta[0],beta[1])))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) +
+  ggtitle("Relative Log-Posterior Density") +
+  theme(legend.position="bottom")
+
+p2 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=ExpP, fill=ExpP)) +
+  geom_raster(interpolate=TRUE) +
+  geom_contour(color='white', breaks=exp(-.5*QValues)) +
+  geom_point(aes(x=MAP_Post[1], y=MAP_Post[2]), color='white') +
+  scale_fill_distiller(palette="Spectral") +
+  labs(fill=expression(pi(beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) +
+  ggtitle("Relative Posterior Density") +
+  theme(legend.position="bottom")
+
+grid.arrange(p1, p2, nrow=1)
+```
+
+```{r}
+# Importance Sampling
+Sample_Std  = rmvt(1e+05, sigma=Var_Post, df=5)
+Sample_Prop = Sample_Std
+Sample_Prop[,1] = MAP_Post[1]+Sample_Prop[,1]
+Sample_Prop[,2] = MAP_Post[2]+Sample_Prop[,2]
+
+vLogPost = apply(Sample_Prop, 1, function(u) -nLogPost(u, h, y, X) + MAP_Opt$value)
+vLogProp = dmvt(Sample_Std, sigma=Var_Post, df=4, log=TRUE)
+
+Weights = exp(vLogPost - vLogProp)
+Weights = Weights / sum(Weights)
+
+Idx_Post = sample(seq(1e+05), 1e+04, replace=TRUE, prob=Weights)
+Sample_Post = Sample_Prop[Idx_Post,]
+
+# Posterior Mean and Variance
+Mean_Post = colMeans(Sample_Post)
+Var_Post  = var(Sample_Post)
+
+# Output
+cat('Posterior Mean :', Mean_Post,
+    '\nPosterior S.E. :', sqrt(diag(Var_Post)),
+    '\nPosterior Cor. :', Var_Post[1,2]/sum(sqrt(diag(Var_Post))))
+```
+
+```{r, warning=FALSE, error=FALSE}
+# Theoretical Density
+dat = data.frame(cbind(mBeta,vExpPost))
+colnames(dat) = c('Beta_0', 'Beta_1', 'Density')
+p1 = ggplot(data=dat, aes(x=Beta_0, y=Beta_1, z=Density, fill=Density)) +
+  stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.05) + 
+  geom_point(aes(x=MAP_Post[1], y=MAP_Post[2]), color="black") +
+  scale_fill_distiller(palette="Spectral") +
+  xlim(8,9.65) + 
+  ylim(-0.5,+1.5) +
+  labs(fill=expression(pi(beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) +
+  ggtitle("Relative Posterior Density")  +
+  theme(legend.position="bottom")
+
+# Empirical Density
+dat = data.frame(Sample_Post)
+colnames(dat) = c('x','y')
+p2 = ggplot(data=dat, aes(x=x, y=y)) + 
+  geom_hex(bins=35) + 
+  geom_density_2d(color='black', h=.3) +
+  scale_fill_distiller(palette="Spectral") + 
+  geom_point(aes(x=MAP_Post[1], y=MAP_Post[2]), color="black") +
+  xlim(8,9.65) + 
+  ylim(-0.5,+1.5) +
+  labs(fill=expression(F[n](beta[0],beta[1]))) +
+  xlab(expression(beta[0])) + 
+  ylab(expression(beta[1])) + 
+  ggtitle("Posterior Frequency") +
+  theme(legend.position="bottom")
+    
+grid.arrange(p1, p2, nrow=1)
+```
+
+
 
 
 
