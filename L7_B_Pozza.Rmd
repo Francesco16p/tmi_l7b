@@ -1,0 +1,113 @@
+---
+title: "L7_B_Pozza7"
+author: "Francesco Pozza"
+date: "2/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exercise 1 
+
+Let weib.y be an i.i.d sample from a gamma r.v with density $$ p(y;\theta)\, = \, \frac{1}{\Gamma{\theta}} 3^\theta y^{\theta-1} e^{-3y} \qquad y,\theta>0.  $$\\
+1) Find the m.l.e of $\theta$ solving the likelihood equation and also maximizing directily the log-likelihood.
+```{r}
+# Loading the data
+weib.y <- c(225, 171, 198, 189, 189, 135, 162, 135, 117, 162)
+# Writing the - log-likelihood
+nllik <- function(param, dati= weib.y)
+{
+  -sum(dgamma(dati,shape=param,rate=3,log=T))
+
+}
+nllik <- Vectorize(nllik, "param")
+# Getting the mle estimate maximizing the log-likelihood
+
+mle.est1 <- optim(1, nllik,method = "Brent",  lower = 1e-6,upper = 1000,hessian = T)
+mle.est1
+
+```
+
+In order to obtain the etimate from the likelihood equation we need to obtain the score which is equal to 
+$ - \frac{\partial }{ \partial \theta} \log \Gamma{(\theta)}+\log(3)+\log y.$ Since $\frac{\partial }{ \partial \theta} \log \Gamma{(\theta)}$ is easilly obtain in R with the function digamma we can write 
+```{r}
+score <- function(param, data=weib.y)
+{
+  n <- length(data)
+  -n*digamma(param)+n*log(3)+sum(log(data))
+}
+
+# Getting the mle estimate
+mle.est2 <- uniroot(score,interval  = c(1e-6,1000))
+mle.est2$root
+```
+b) The relative log-likelihood is define as $\log \theta-\log \hat{\theta} $ therefore its plot can be obtain as
+```{r rllik}
+# calculate wald interval
+wald <- mle.est1$par+c(-1,1)*qnorm(0.975)*sqrt(1/drop(mle.est1$hessian))
+# calculate log-ratio interval 
+library(rootSolve)
+logR <- uniroot.all(function(x) -2*(nllik(mle.est1$par)-nllik(x))-qchisq(0.95, df=1) , interval = c(1,1000) )
+
+
+plot(function(x) -(nllik(x)-nllik(mle.est1$par)), ylim = c(-8,0), xlim = c(460,540), xlab=expression(theta),
+     ylab = "Relative log-Likelihood", main = "Fig 1: Relative log-likelihood plot")
+```
+c) The mle estimate for $ \omega = \log \theta$ and its standard error can be obtain using as argument of nllik the quantity $\theta =e^{\omega}. $ In addition if we want to obtain the mle using the score equation we just need to remember that $ \ell_{*}(\omega) = \ell_{*}(\theta(\omega))\frac{\partial}{\partial \omega}\theta(\omega).$ Therefore:
+```{r}
+# Getting the mle estimate maximizing the log-likelihood
+
+mle.est3 <- optim(1,function(x) nllik(exp(x)),method = "Brent",  lower = 1e-6,upper = 1000,hessian = T)
+mle.est3$par
+
+# getting mle estimating solving the score equation
+mle.est4 <- uniroot(function(x) score(exp(x))*exp(x),interval  = c(1e-6,1000))
+mle.est4$root
+
+```
+Relative log-likelihood plot and confidence interval are obtain in the same way of point b). Since the Log-ratio confidence interval is equivariant under reparametrizations, we just need to take the logarithm of the interval obtained for $\theta$
+```{r}
+plot(function(x) -(nllik(exp(x))-nllik(exp(mle.est3$par))), ylim = c(-8,0), xlim = c(6.1,6.30), xlab=expression(omega),
+     ylab = "Relative log-Likelihood", main = "Fig 2: Relative log-likelihood plot")
+# Wlad interval
+wald.omega <- mle.est3$par+c(-1,1)*qnorm(0.975)*sqrt(1/drop(mle.est3$hessian))
+
+# calculate log-ratio interval. Since this quantity is equivariat under
+# reparametrizations we don't need extra calcultions
+LR.omega <- log(LR)
+```
+
+d) Assume a prior $N(0,\sigma^2_0)$ for $\omega$ and perform a Bayesian analysis of the data, using both analytical and simulation-based solutions.
+First of all we need to fix the hyperparameter $\sigma^2_0.$ This can be done in many ways, here we use $\sigma_0=10$ in order to have a small apriori information. At this point we can obtain the log-postirior density
+```{r log-post}
+logPost <- function(omega, iper = 10)
+{
+  -nllik(exp(omega))+dnorm(omega, mean = 0, sd=iper, log = TRUE)
+}
+```
+An analytical estimate of $\omega$ is given by the posterior mode and it can be obtain maximizing the logposterior density
+```{r MAP estimete}
+
+MAP <- optim(1,function(x) -logPost(x), method = "Brent", hessian = T, lower = -30, upper = 30 ) 
+# Aggiungere magari qualcosa visto nella lezione 5
+```
+which gives $\hat{\omega}=6.21.$
+On the other hand we can even from the posterior using rejection sampling using as $g()$ a normal with $\mu = 6.21$ and $\sigma=1$
+```{r}
+b <- optim(1,function(x) -exp(logPost(x))/dnorm(x, mean = MAP$par), method = "Brent" ,lower = 1, upper = 15)
+b <- b$value
+sim <- NULL
+n <- 10**5 #valore richiesto
+while (length(sim)<n) {
+  u <- runif(n)
+  x <- rnorm(n, mean = MAP$par) # qua eventualmente cambiare
+  sim <- c(sim,x[(u*b*dnorm(x, mean = MAP$par)<exp(logPost(x)))]) # anche qua vanno cambiate le densità
+}
+hist(sim, nclass = 50)
+
+
+
+```
+
